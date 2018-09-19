@@ -4,46 +4,74 @@ import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Properties;
 
 import org.jsoup.Jsoup;
-import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
 
 public class FileCrawler {
 
-	// Final variable to hold the domain to be crawled
-	public final static String DOMAIN_PROTOCOL = "http";
-	public final static String DOMAIN_TO_CRAWL = "prudential.co.uk";
-	
-	public final static File DIR = new File(".");
-	public final static String FILE_TRACKER = "websites.txt";
+	// Default assignment if not defined in property
+	public static String DOMAIN_PROTOCOL = "http";
+	public static String DOMAIN_TO_CRAWL = "prudential.co.uk";
+
+	public static File DIR = new File(".");
+	public static String TRACKER_FILE = "websites.txt";
+	public static String ERROR_FILE = "error1.txt";
 
 	public static void main(String[] args) throws IOException {
 
-		String filePath = DIR.getCanonicalPath() + File.separator + FILE_TRACKER;
-		createFile(filePath,"");
-		crawlSite(DOMAIN_PROTOCOL + "://" + DOMAIN_TO_CRAWL, filePath);
+		InputStream is = null;
+		Properties prop = null;
+		try {
+			prop = new Properties();
+			is = new FileInputStream(new File(ClassLoader.getSystemResource(
+					"config.properties").getFile()));
+			prop.load(is);
+			DOMAIN_PROTOCOL = prop.getProperty("website.protocol");
+			DOMAIN_TO_CRAWL = prop.getProperty("website.domain");
+			TRACKER_FILE = prop.getProperty("website.tracker.filepath");
+			ERROR_FILE = prop.getProperty("website.error.filepath");
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		String filePath = "";
+		if (TRACKER_FILE.equals("websites.txt"))
+			filePath = DIR.getCanonicalPath() + File.separator + TRACKER_FILE;
+		else
+			filePath = TRACKER_FILE;
+
+		System.out.println("DIR: " + filePath);
+
+		createFile(filePath, "");
+		crawlSite(DOMAIN_PROTOCOL + "://" + DOMAIN_TO_CRAWL);
 
 	}
 
-	public static void createFile(String file, String content) throws IOException {
+	public static void createFile(String filePath, String content)
+			throws IOException {
 
-		try (BufferedWriter out = new BufferedWriter(new FileWriter(file, true))) {
-			if(!content.isEmpty())
-			{
+		try (BufferedWriter out = new BufferedWriter(new FileWriter(filePath,
+				true))) {
+			if (!content.isEmpty()) {
 				out.write(content);
 				out.newLine();
 			}
 		}
-		
+
 	}
 
-	public static void crawlSite(String url, String fileLocation) throws IOException {
+	public static void crawlSite(String url) throws IOException {
 
 		// crawl the URL
 		if (url.contains(DOMAIN_TO_CRAWL)) {
@@ -54,26 +82,35 @@ public class FileCrawler {
 			return;
 		}
 
-		String locErr = DIR.getCanonicalPath() + File.separator + "error.txt";
-		String locErrRemain = DIR.getCanonicalPath() + File.separator + "errorRemain.txt";
-		
+		String trackerFilePath = "";
+		String errorFilePath = "";
+		if (TRACKER_FILE.equals("websites.txt"))
+			trackerFilePath = DIR.getCanonicalPath() + File.separator
+					+ TRACKER_FILE;
+		else
+			trackerFilePath = TRACKER_FILE;
+
+		if (TRACKER_FILE.equals("error.txt"))
+			errorFilePath = DIR.getCanonicalPath() + File.separator
+					+ ERROR_FILE;
+		else
+			errorFilePath = ERROR_FILE;
+
 		// check if URL is already been crawled and tracked in the file
-		boolean isExist = checkExist(url, fileLocation);
+		boolean isExist = checkExist(url, trackerFilePath);
 
 		if (!isExist) {
-			createFile(fileLocation, url);
+			createFile(trackerFilePath, url);
 
 			// Try connect to the tracked URL and parse the HTML
 			Document doc = null;
 			try {
 				doc = Jsoup.connect(url).get();
-			} catch (UnsupportedMimeTypeException umte) {
-
-				createFile(locErr, url+"\t"+umte.getLocalizedMessage());
-
 			} catch (Exception exp) {
 
-				createFile(locErrRemain, url+"\t"+exp.getLocalizedMessage());
+				createFile(errorFilePath,
+						url + "\t" + exp.getLocalizedMessage());
+				return;
 
 			}
 
@@ -81,7 +118,7 @@ public class FileCrawler {
 			Elements elements = doc.select("a[href]");
 			for (Element link : elements) {
 
-				crawlSite(link.attr("abs:href"), fileLocation);
+				crawlSite(link.attr("abs:href"));
 			}
 		} else {
 			// do nothing
@@ -91,7 +128,8 @@ public class FileCrawler {
 	}
 
 	// Method to check if URL already been crawled
-	public static boolean checkExist(String url, String fileName) throws IOException {
+	public static boolean checkExist(String url, String fileName)
+			throws IOException {
 
 		// Read the file to check if URL exists
 		FileInputStream fis = new FileInputStream(new File(fileName));
